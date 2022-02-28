@@ -39,29 +39,26 @@
   (compilation-scroll-output t)
   (show-paren-mode nil)
   (major-mode 'text-mode)
-  (backup-by-copying t)
-  (auto-save-file-name-transforms `((".*" ,temporary-file-directory t)))
-  (delete-old-versions t)
-  (kept-new-versions 3)
-  (kept-old-versions 2)
-  (version-control t)
+  (make-backup-files nil) ;; disable backup file
+  (auto-save-default nil) ;; disable auto save
   (bookmark-default-file "~/Sync/emacs/bookmark")
   (use-dialog-box nil)
   (help-window-select t)
   (vc-follow-symlinks "Follow link")
   (mouse-yank-at-point t)
+  (save-place-mode t)
+  :config
+  (fset 'yes-or-no-p 'y-or-n-p)
+  (prefer-coding-system 'utf-8)
   :bind
   (("<mouse-3>" . 'mouse-major-mode-menu)
    ("C-x C-b" . ibuffer)
    ("C-x k" . kill-this-buffer))
-  :config
-  (fset 'yes-or-no-p 'y-or-n-p)
-  (prefer-coding-system 'utf-8)
   )
 
+(add-to-list 'default-frame-alist '(font . "InputMonoCondensed Light:pixelsize=14"))
+
 (add-to-list 'default-frame-alist '(alpha-background . 80))
-(add-to-list 'default-frame-alist '(width . 90))
-(add-to-list 'default-frame-alist '(height . 50))
 
 (use-package doom-themes
   :ensure t
@@ -109,6 +106,7 @@
   (org-todo-keywords
    '((sequence "NEXT(n)" "INBOX(i)" "WAIT(w@/!)" "MAYBE(m)"  "|" "DONE(d)" "CANCELED(c@)")))
   (org-use-speed-commands t)
+  :diminish org-indent-mode
   :ensure t
   :bind (("C-c c" . org-capture)
          ("C-c a" . org-agenda)
@@ -117,6 +115,8 @@
   (when (file-exists-p "~/Sync/roam")
     (setq org-directory "~/Sync/emacs/org")
     (setq org-agenda-files (list "~/Sync/roam" "~/Sync/roam/daily")))
+  ;; enable org-store-link etc.
+  (require 'org-protocol)
   )
 
 (use-package org-bullets
@@ -124,6 +124,48 @@
   :config
   (add-hook 'org-mode-hook (lambda () (org-bullets-mode 1)))
   (setq org-bullets-bullet-list '("●" "○")))
+
+  (use-package org-roam
+    :ensure t
+    :custom
+    (org-roam-dailies-directory "daily/")
+    (org-roam-dailies-capture-templates
+	  '(("d" "default" entry
+	     "* %?"
+	     :target (file+head "%<%Y-%m-%d>.org"
+				"#+title: %<%Y-%m-%d>\n"))))
+    :init
+    (when (file-exists-p "~/Sync/roam")
+      (setq org-roam-directory "~/Sync/roam"))
+    :bind (("C-c n l" . org-roam-buffer-toggle)
+	       ("C-c n f" . org-roam-node-find)
+	       ("C-c n i" . org-roam-node-insert)
+	       ("C-c n w" . org-roam-refile)
+	       ("C-c n d" . org-roam-dailies-goto-today)
+	       ("C-c n g" . org-roam-dailies-goto-date)
+	       ("C-c n c" . org-roam-dailies-capture-today)
+	       )
+
+    :config
+    (org-roam-setup))
+
+(use-package org-download
+  :ensure t
+  :bind (:map org-mode-map
+              ("C-c d s" . org-download-screenshot)
+              ("C-c d d" . org-download-delete)
+              ("C-c d e" . org-download-edit)
+              ("C-c d y" . org-download-yank))
+  :config
+  (setq org-download-image-html-width 500)
+  (setq org-download-image-latex-width 500)
+  (setq org-download-method 'attach)
+  (setq org-download-screenshot-method "grim -g \"$(slurp)\" %s")
+  (setq org-download-edit-cmd "krita %s"))
+
+                                        ; html export syntax highlighting
+(use-package htmlize
+  :ensure t)
 
 (use-package vertico
   :ensure t
@@ -143,14 +185,14 @@
 
 (use-package consult
   :ensure t
-  :bind (("M-s g" . consult-git-grep)
-	     ("M-s l" . consult-line)
-	     ("M-i"   . consult-imenu)
-	     ("M-s e" . consult-flymake)
-	     ("M-#"   . consult-register-load)
-         ("M-'"   . consult-register-store)
+  :bind (([remap project-find-regexp] . consult-ripgrep)
+         ([remap org-goto] . consult-org-heading)
+         ([remap imenu] . consult-imenu)
+	     ("M-#" . consult-register-load)
+         ("M-'" . consult-register-store) ;; orig. abbrev-prefix-mark (unrelated)
          ("C-M-#" . consult-register))
   :init
+  (setq consult-project-root-function #'vc-root-dir)
   (setq xref-show-xrefs-function #'consult-xref
         xref-show-definitions-function #'consult-xref)
   ;; Use `consult-completion-in-region' if Vertico is enabled.
@@ -161,23 +203,12 @@
                      #'consult-completion-in-region
                    #'completion--in-region)
 		         args)))
-  :config
-  (setq consult-project-root-function #'vc-root-dir))
+  )
 
 (use-package marginalia
   :ensure t
   :init
   (marginalia-mode))
-
-(use-package yasnippet
-  :ensure t
-  :diminish yas-minor-mode
-  :config
-  (yas-global-mode 1))
-
-(use-package yasnippet-snippets
-  :ensure t
-  :after yasnippet)
 
 (use-package embark
   :ensure t
@@ -193,11 +224,21 @@
   :ensure t
   :after (embark consult))
 
+(use-package yasnippet
+  :ensure t
+  :diminish yas-minor-mode
+  :config
+  (yas-global-mode 1))
+
+(use-package yasnippet-snippets
+  :ensure t
+  :after yasnippet)
+
 (use-package company
   :ensure t
   :diminish company-mode
   :init
-  (setq company-idel-delay 0.2)
+  (setq company-idel-delay 0)
   (setq company-backends '(company-capf))
   :bind ("M-<tab>" . company-other-backend)
   :config
@@ -207,19 +248,30 @@
   :ensure t
   :after company
   :init
-  (setq company-backends '(company-tabnine company-capf)))
+  (setq company-backends '(company-tabnine company-capf))
+  :config
+  ;; kill tabnine when kill project
+  ;;(advice-add 'project-kill-buffers :before #'company-tabnine-kill-process)
+  )
+
+(use-package company-box
+  :ensure t
+  :custom
+  (company-box-doc-enable nil)
+  :diminish company-box-mode
+  :hook
+  (company-mode . company-box-mode))
 
 (use-package smartparens
   :ensure t
   :diminish smartparens-mode
   :bind (:map smartparens-mode-map
-              ("M-("             . sp-wrap-round)
+              ("M-(" . sp-wrap-round)
               ("C-M-<backspace>" . sp-backward-unwrap-sexp)
-              ("C-<right>"       . sp-forward-slurp-sexp)
-              ("C-<left>"        . sp-forward-barf-sexp))
-
+              ("C-<right>" . sp-forward-slurp-sexp)
+              ("C-<left>" . sp-forward-barf-sexp))
   :config
-  ;; (setq sp-highlight-pair-overlay 'nil)
+  (setq sp-highlight-pair-overlay 'nil)
   (setq sp-ignore-modes-list
 	    '(inferior-emacs-lisp-mode
 	      emacs-lisp-mode))
@@ -229,12 +281,21 @@
 (use-package crux
   :ensure t
   :diminish t
-  :bind (("C-c r"   . crux-rename-file-and-buffer)
-	     ("C-c d"   . crux-duplicate-and-comment-current-line-or-region)
-	     ("M-o"     . crux-other-window-or-switch-buffer)
+  :bind (("C-c C-r" . crux-rename-file-and-buffer)
+	     ("C-c d" . crux-duplicate-and-comment-current-line-or-region)
+	     ("M-o" . crux-other-window-or-switch-buffer)
 	     ("C-x 4 t" . crux-transpose-windows))
   :config
   (crux-reopen-as-root-mode))
+
+(use-package format-all
+  :ensure t
+  :init
+  (setq format-all-formatters
+        '(("Nix" nixpkgs-fmt)))
+  :bind
+  ("C-x f" . format-all-buffer)
+  )
 
 (use-package avy
   :ensure t
@@ -243,7 +304,7 @@
 (use-package dired
   :init
   (setq dired-kill-when-opening-new-dired-buffer t)
-  :hook (dired-mode . (lambda () (dired-hide-details-mode)))
+  :hook (dired-mode . dired-hide-details-mode)
   )
 
 (use-package flymake
@@ -251,6 +312,14 @@
 	          ("M-n" . flymake-goto-next-error)
 	          ("M-p" . flymake-goto-prev-error))
   )
+
+(use-package fasd
+  :ensure t
+  :bind (("C-x j" . fasd-find-file))
+  :init
+  (setq fasd-enable-initial-prompt nil)
+  :config
+  (global-fasd-mode 1))
 
 (use-package ibuffer-project
   :ensure t
@@ -260,23 +329,43 @@
             (lambda ()
               (setq ibuffer-filter-groups (ibuffer-project-generate-filter-groups))
               (unless (eq ibuffer-sorting-mode 'project-file-relative)
-		        (ibuffer-do-sort-by-project-file-relative)))))
+                (ibuffer-do-sort-by-project-file-relative)))))
 
 (use-package repeat
   :config
   (repeat-mode t))
 
 (use-package project
-  :config
-  (setq project-switch-use-entire-map t))
+  :custom
+  (project-switch-use-entire-map t)
+  (project-kill-buffer-conditions
+   '(buffer-file-name
+     (major-mode . fundamental-mode)
+     (major-mode . magit-mode)
+     (major-mode . magit-process-mode)
+     (derived-mode . special-mode)
+     (derived-mode . compilation-mode)
+     (derived-mode . dired-mode)
+     (derived-mode . diff-mode)
+     (derived-mode . comint-mode)
+     (derived-mode . eshell-mode)
+     (derived-mode . change-log-mode)))
+  )
 
 (use-package magit
   :ensure t
+  :custom
+  (magit-auto-revert-mode t)
+  (magit-auto-revert-immediately t)
   :diminish auto-revert-mode
   :bind ("C-x g" . magit-status)
-  :config
-  (setq magit-auto-revert-mode t)
-  (setq magit-auto-revert-immediately t))
+  )
+;; load magit extras for project-map
+(use-package magit-extras)
+
+(use-package magit-delta
+  :ensure t
+  :hook (magit-mode . magit-delta-mode))
 
 (use-package diff-hl
   :ensure t
@@ -286,52 +375,63 @@
   (add-hook 'magit-post-refresh-hook 'diff-hl-magit-post-refresh)
   )
 
-(use-package ediff
-  :custom
-  (ediff-window-setup-function 'ediff-setup-windows-plain))
+(use-package forge
+  :ensure t
+  :after magit)
+
+(setq ediff-window-setup-function 'ediff-setup-windows-plain)
 
 (use-package eglot
   :ensure t
+  :custom
+  (eglot-autoshutdown t)
+  (eldoc-echo-area-use-multiline-p nil)
   :init
   (setq eglot-stay-out-of '("company"))
-  (setq eglot-autoshutdown t)
-  ;; disable multiline eldoc, view doc with C-h .
-  (setq eldoc-echo-area-use-multiline-p nil)
   :bind
   ("C-x l" . eglot)
   (:map eglot-mode-map
-	    ("C-c C-r" . eglot-rename)
-	    ("C-c C-f" . eglot-format)
+        ([remap indent-region] . eglot-format)
+	    ("C-c r" . eglot-rename)
 	    ("C-c o" . eglot-code-actions))
-  :commands eglot)
+  :commands eglot
+  ;; :hook
+  ;; (nix-mode . eglot-ensure)
+  :config
+  (advice-add 'project-kill-buffers
+              :before
+              #'(lambda ()
+                  (let ((server (eglot-current-server)))
+                    (when server
+                      (eglot-shutdown server)))))
+  )
 
 (use-package python
   :hook (python-mode . (lambda ()
-			             (setq forward-sexp-function nil))))
-
+			             (setq forward-sexp-function nil)))
+)
 
 (use-package haskell-mode
   :ensure t)
 
 (use-package rust-mode
-  :ensure t
-  :config
-  (setq rust-format-on-save t))
-
-(use-package cmake-mode
   :ensure t)
 
 (use-package nix-mode
   :ensure t
   :magic
-  ("\.nix$" . nix-mode)
-  :hook
-  (nix-mode . eglot-ensure)
-  :custom
-  (nix-indent-function 'nix-indent-line))
+  ("\.nix$" . nix-mode))
+
+(use-package nix-update
+  :ensure t
+  :after nix-mode
+  :bind (:map nix-mode-map
+              ("C-c u" . nix-update-fetch)))
 
 (use-package direnv
   :ensure t
+  :custom
+  (direnv-always-show-summary nil)
   :config
   (direnv-mode))
 
@@ -340,12 +440,22 @@
   (add-to-list 'tramp-remote-path 'tramp-own-remote-path))
 
 (use-package dockerfile-mode
-  :ensure t)
-(use-package docker-tramp
-  :ensure t)
+  :ensure t
+  :bind
+  (:map dockerfile-mode-map
+        ([remap indent-region] . format-all-buffer)))
+(use-package docker-tramp :ensure t)
 
 (use-package yaml-mode
   :ensure t)
 
 (use-package meson-mode
+  :ensure t)
+
+(use-package protobuf-mode
+  :magic
+  ("\.proto$" . protobuf-mode)
+  :bind
+  (:map protobuf-mode-map
+        ([remap indent-region] . format-all-buffer))
   :ensure t)
